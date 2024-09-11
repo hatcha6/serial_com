@@ -2,6 +2,7 @@ name: serial_com
 description: "Serial communication package that works out of the box"
 version: 0.0.1
 homepage:
+repository: https://github.com/hatcha6/serial_com
 
 environment:
   sdk: ^3.5.1

@@ -2,7 +2,10 @@
 
 #include <flutter_linux/flutter_linux.h>
 #include <gtk/gtk.h>
-#include <sys/utsname.h>
+#include <fcntl.h>
+#include <termios.h>
+#include <unistd.h>
+#include <errno.h>
 
 #include <cstring>
 
@@ -26,8 +29,14 @@ static void serial_com_plugin_handle_method_call(
 
   const gchar* method = fl_method_call_get_name(method_call);
 
-  if (strcmp(method, "getPlatformVersion") == 0) {
-    response = get_platform_version();
+  if (strcmp(method, "openPort") == 0) {
+    response = handle_open_port(method_call);
+  } else if (strcmp(method, "closePort") == 0) {
+    response = handle_close_port(method_call);
+  } else if (strcmp(method, "writeToPort") == 0) {
+    response = handle_write_to_port(method_call);
+  } else if (strcmp(method, "readFromPort") == 0) {
+    response = handle_read_from_port(method_call);
   } else {
     response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
   }
@@ -73,4 +82,92 @@ void serial_com_plugin_register_with_registrar(FlPluginRegistrar* registrar) {
                                             g_object_unref);
 
   g_object_unref(plugin);
+}
+
+// New functions for serial communication
+
+FlMethodResponse* handle_open_port(FlMethodCall* method_call) {
+  FlValue* args = fl_method_call_get_args(method_call);
+  const char* port_name = fl_value_get_string(fl_value_lookup_string(args, "port"));
+  int baud_rate = fl_value_get_int(fl_value_lookup_string(args, "baudRate"));
+
+  int fd = open(port_name, O_RDWR | O_NOCTTY | O_SYNC);
+  if (fd < 0) {
+    g_autofree gchar *error_msg = g_strdup_printf("Error opening port: %s", strerror(errno));
+    return FL_METHOD_RESPONSE(fl_method_error_response_new("OPEN_ERROR", error_msg, nullptr));
+  }
+
+  struct termios tty;
+  memset(&tty, 0, sizeof tty);
+  if (tcgetattr(fd, &tty) != 0) {
+    close(fd);
+    return FL_METHOD_RESPONSE(fl_method_error_response_new("CONFIG_ERROR", "Error from tcgetattr", nullptr));
+  }
+
+  cfsetospeed(&tty, baud_rate);
+  cfsetispeed(&tty, baud_rate);
+
+  tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
+  tty.c_iflag &= ~IGNBRK;
+  tty.c_lflag = 0;
+  tty.c_oflag = 0;
+  tty.c_cc[VMIN]  = 0;
+  tty.c_cc[VTIME] = 5;
+
+  tty.c_iflag &= ~(IXON | IXOFF | IXANY);
+  tty.c_cflag |= (CLOCAL | CREAD);
+
+  if (tcsetattr(fd, TCSANOW, &tty) != 0) {
+    close(fd);
+    return FL_METHOD_RESPONSE(fl_method_error_response_new("CONFIG_ERROR", "Error from tcsetattr", nullptr));
+  }
+
+  g_autoptr(FlValue) result = fl_value_new_int(fd);
+  return FL_METHOD_RESPONSE(fl_method_success_response_new(result));
+}
+
+FlMethodResponse* handle_close_port(FlMethodCall* method_call) {
+  FlValue* args = fl_method_call_get_args(method_call);
+  int fd = fl_value_get_int(fl_value_lookup_string(args, "fd"));
+
+  if (close(fd) < 0) {
+    g_autofree gchar *error_msg = g_strdup_printf("Error closing port: %s", strerror(errno));
+    return FL_METHOD_RESPONSE(fl_method_error_response_new("CLOSE_ERROR", error_msg, nullptr));
+  }
+
+  return FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+}
+
+FlMethodResponse* handle_write_to_port(FlMethodCall* method_call) {
+  FlValue* args = fl_method_call_get_args(method_call);
+  int fd = fl_value_get_int(fl_value_lookup_string(args, "fd"));
+  const char* data = fl_value_get_string(fl_value_lookup_string(args, "data"));
+
+  ssize_t bytes_written = write(fd, data, strlen(data));
+  if (bytes_written < 0) {
+    g_autofree gchar *error_msg = g_strdup_printf("Error writing to port: %s", strerror(errno));
+    return FL_METHOD_RESPONSE(fl_method_error_response_new("WRITE_ERROR", error_msg, nullptr));
+  }
+
+  g_autoptr(FlValue) result = fl_value_new_int(bytes_written);
+  return FL_METHOD_RESPONSE(fl_method_success_response_new(result));
+}
+
+FlMethodResponse* handle_read_from_port(FlMethodCall* method_call) {
+  FlValue* args = fl_method_call_get_args(method_call);
+  int fd = fl_value_get_int(fl_value_lookup_string(args, "fd"));
+  int max_length = fl_value_get_int(fl_value_lookup_string(args, "maxLength"));
+
+  char* buffer = (char*)malloc(max_length + 1);
+  ssize_t bytes_read = read(fd, buffer, max_length);
+  if (bytes_read < 0) {
+    free(buffer);
+    g_autofree gchar *error_msg = g_strdup_printf("Error reading from port: %s", strerror(errno));
+    return FL_METHOD_RESPONSE(fl_method_error_response_new("READ_ERROR", error_msg, nullptr));
+  }
+
+  buffer[bytes_read] = '\0';
+  g_autoptr(FlValue) result = fl_value_new_string(buffer);
+  free(buffer);
+  return FL_METHOD_RESPONSE(fl_method_success_response_new(result));
 }

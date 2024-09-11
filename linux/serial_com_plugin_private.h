@@ -8,3 +8,9 @@
 
 // Handles the getPlatformVersion method call.
 FlMethodResponse *get_platform_version();
+
+// New functions for serial communication
+FlMethodResponse* handle_open_port(FlMethodCall* method_call);
+FlMethodResponse* handle_close_port(FlMethodCall* method_call);
+FlMethodResponse* handle_write_to_port(FlMethodCall* method_call);
+FlMethodResponse* handle_read_from_port(FlMethodCall* method_call);

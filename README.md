@@ -4,12 +4,15 @@ A new Flutter plugin project.
 
 ## Getting Started
 
-This project is a starting point for a Flutter
-[plug-in package](https://flutter.dev/to/develop-plugins),
-a specialized package that includes platform-specific implementation code for
-Android and/or iOS.
+## MacOS
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+don't forget to add the ORSSerial framework to the project.
+
+also add the following to the Info.plist file:
+
+```xml
+<key>NSBluetoothPeripheralUsageDescription</key>
+<string>This app needs access to Bluetooth to connect to the serial device.</string>
+<key>NSSerialPorts</key>
+```
 
