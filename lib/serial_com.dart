@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:serial_com/device.dart';
+
 import 'serial_com_platform_interface.dart';
 
 class SerialCom {
@@ -21,5 +23,13 @@ class SerialCom {
 
   Future<bool> write(Uint8List data) {
     return SerialComPlatform.instance.write(data);
+  }
+
+  Future<List<Device>> listDevices() {
+    return SerialComPlatform.instance.listDevices();
+  }
+
+  Future<Uint8List> read() {
+    return SerialComPlatform.instance.read();
   }
 }

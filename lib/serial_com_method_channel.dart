@@ -20,8 +20,8 @@ class MethodChannelSerialCom extends SerialComPlatform {
   @override
   Future<List<Device>> listDevices() async {
     final devices = await methodChannel
-        .invokeMethod<List<Map<String, dynamic>>>('listDevices');
-    return devices?.map((device) => Device.fromJson(device)).toList() ?? [] ;
+        .invokeListMethod<Map<String, dynamic>>('listDevices');
+    return devices?.map((device) => Device.fromJson(device)).toList() ?? [];
   }
 
   @override
