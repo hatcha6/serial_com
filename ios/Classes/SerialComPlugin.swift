@@ -8,6 +8,7 @@ public class SerialComPlugin: NSObject, FlutterPlugin, CBCentralManagerDelegate,
     private var characteristic: CBCharacteristic?
     private var isConnected = false
     private var pendingResult: FlutterResult?
+    private var port: String?
 
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(name: "serial_com", binaryMessenger: registrar.messenger())
@@ -33,6 +34,7 @@ public class SerialComPlugin: NSObject, FlutterPlugin, CBCentralManagerDelegate,
                 result(FlutterError(code: "INVALID_ARGUMENTS", message: "Invalid arguments for connect", details: nil))
                 return
             }
+            self.port = port
             connect(port: port, baudRate: baudRate, result: result)
         case "disconnect":
             disconnect(result: result)
@@ -66,10 +68,27 @@ public class SerialComPlugin: NSObject, FlutterPlugin, CBCentralManagerDelegate,
     }
 
     private func connect(port: String, baudRate: Int, result: @escaping FlutterResult) {
-        // In a real implementation, you'd use the port and baudRate to connect to the device.
-        // For simplicity, we're just setting isConnected to true here.
-        isConnected = true
-        result(true)
+        guard let uuid = UUID(uuidString: port) else {
+            result(FlutterError(code: "INVALID_PORT", message: "Invalid port UUID", details: nil))
+            return
+        }
+        
+        // Stop any ongoing scan
+        centralManager.stopScan()
+        
+        // Start scanning for the specific device
+        centralManager.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
+        
+        // Set up a timer to stop scanning after 10 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) { [weak self] in
+            self?.centralManager.stopScan()
+            if !(self?.isConnected ?? false) {
+                result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Device not found within timeout", details: nil))
+            }
+        }
+        
+        // Store the result callback to be used when the connection is established
+        pendingResult = result
     }
 
     private func disconnect(result: @escaping FlutterResult) {
@@ -104,6 +123,21 @@ public class SerialComPlugin: NSObject, FlutterPlugin, CBCentralManagerDelegate,
         // Handle state changes if needed
     }
 
+    public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
+        guard let pendingUUID = UUID(uuidString: port) else { return }
+        
+        if peripheral.identifier == pendingUUID {
+            self.peripheral = peripheral
+            centralManager.stopScan()
+            centralManager.connect(peripheral, options: nil)
+        }
+    }
+
+    public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        peripheral.delegate = self
+        peripheral.discoverServices(nil)
+    }
+
     // MARK: - CBPeripheralDelegate
 
     public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
@@ -114,6 +148,32 @@ public class SerialComPlugin: NSObject, FlutterPlugin, CBCentralManagerDelegate,
         } else {
             pendingResult?(FlutterError(code: "NO_DATA", message: "No data received", details: nil))
         }
+        pendingResult = nil
+    }
+
+    public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        guard let services = peripheral.services else { return }
+        
+        for service in services {
+            peripheral.discoverCharacteristics(nil, for: service)
+        }
+    }
+
+    public func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        guard let characteristics = service.characteristics else { return }
+        
+        for characteristic in characteristics {
+            if characteristic.properties.contains(.write) || characteristic.properties.contains(.writeWithoutResponse) {
+                self.characteristic = characteristic
+                isConnected = true
+                pendingResult?(true)
+                pendingResult = nil
+                return
+            }
+        }
+        
+        // If we get here, we didn't find a suitable characteristic
+        pendingResult?(FlutterError(code: "NO_WRITABLE_CHARACTERISTIC", message: "No writable characteristic found", details: nil))
         pendingResult = nil
     }
 

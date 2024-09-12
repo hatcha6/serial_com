@@ -6,6 +6,7 @@ import IOBluetooth
 public class SerialComPlugin: NSObject, FlutterPlugin, ORSSerialPortDelegate {
     private var serialPort: ORSSerialPort?
     private var methodChannel: FlutterMethodChannel?
+    private var cachedData = Data()
     
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(name: "serial_com", binaryMessenger: registrar.messenger)
@@ -89,9 +90,8 @@ public class SerialComPlugin: NSObject, FlutterPlugin, ORSSerialPortDelegate {
     }
     
     private func read(result: @escaping FlutterResult) {
-        // This method will be called when data is available
-        // For now, we'll return an empty array
-        result(FlutterStandardTypedData(bytes: Data()))
+        result(FlutterStandardTypedData(bytes: cachedData))
+        cachedData.removeAll() // Clear the cache after reading
     }
     
     private func requestPermission(result: @escaping FlutterResult) {
@@ -106,14 +106,15 @@ public class SerialComPlugin: NSObject, FlutterPlugin, ORSSerialPortDelegate {
     // MARK: - ORSSerialPortDelegate
     
     public func serialPort(_ serialPort: ORSSerialPort, didReceive data: Data) {
-        methodChannel?.invokeMethod("onDataReceived", arguments: FlutterStandardTypedData(bytes: data))
+        cachedData.append(data)
+        // Removed: methodChannel?.invokeMethod("onDataReceived", arguments: FlutterStandardTypedData(bytes: data))
     }
     
     public func serialPortWasRemovedFromSystem(_ serialPort: ORSSerialPort) {
-        methodChannel?.invokeMethod("onPortDisconnected", arguments: nil)
+        // Removed: methodChannel?.invokeMethod("onPortDisconnected", arguments: nil)
     }
     
     public func serialPort(_ serialPort: ORSSerialPort, didEncounterError error: Error) {
-        methodChannel?.invokeMethod("onError", arguments: error.localizedDescription)
+        // Removed: methodChannel?.invokeMethod("onError", arguments: error.localizedDescription)
     }
 }
