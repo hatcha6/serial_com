@@ -1,12 +1,11 @@
 import Cocoa
 import FlutterMacOS
-import ORSSerial
+import SwiftSerial
 import IOBluetooth
 
-public class SerialComPlugin: NSObject, FlutterPlugin, ORSSerialPortDelegate {
-    private var serialPort: ORSSerialPort?
+public class SerialComPlugin: NSObject, FlutterPlugin {
+    private var serialPort: SerialPort?
     private var methodChannel: FlutterMethodChannel?
-    private var cachedData = Data()
     
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(name: "serial_com", binaryMessenger: registrar.messenger)
@@ -39,12 +38,12 @@ public class SerialComPlugin: NSObject, FlutterPlugin, ORSSerialPortDelegate {
     }
     
     private func listDevices(result: @escaping FlutterResult) {
-        let devices = ORSSerialPortManager.shared().availablePorts.map { port -> [String: Any] in
+        let devices = SerialPort.getAvailablePorts().map { portPath -> [String: Any] in
             return [
-                "name": port.name,
-                "description": port.description,
-                "baudRate": port.baudRate,
-                "port": port.path
+                "name": URL(fileURLWithPath: portPath).lastPathComponent,
+                "description": "Serial Port",
+                "baudRate": 9600, // Default baud rate
+                "port": portPath
             ]
         }
         result(devices)
@@ -58,21 +57,24 @@ public class SerialComPlugin: NSObject, FlutterPlugin, ORSSerialPortDelegate {
             return
         }
         
-        serialPort = ORSSerialPort(path: port)
-        serialPort?.baudRate = NSNumber(value: baudRate)
-        serialPort?.delegate = self
-        
-        if serialPort?.open() == true {
+        do {
+            serialPort = try SerialPort(path: port)
+            try serialPort?.setSettings(receiveRate: .baud9600, transmitRate: .baud9600, minimumBytesToRead: 1)
+            try serialPort?.openPort()
             result(true)
-        } else {
-            result(false)
+        } catch {
+            result(FlutterError(code: "CONNECTION_ERROR", message: "Failed to connect: \(error.localizedDescription)", details: nil))
         }
     }
     
     private func disconnect(result: @escaping FlutterResult) {
-        serialPort?.close()
-        serialPort = nil
-        result(true)
+        do {
+            try serialPort?.closePort()
+            serialPort = nil
+            result(true)
+        } catch {
+            result(FlutterError(code: "DISCONNECT_ERROR", message: "Failed to disconnect: \(error.localizedDescription)", details: nil))
+        }
     }
     
     private func write(call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -81,17 +83,24 @@ public class SerialComPlugin: NSObject, FlutterPlugin, ORSSerialPortDelegate {
             return
         }
         
-        if let serialPort = serialPort, serialPort.isOpen {
-            serialPort.send(data.data)
+        do {
+            try serialPort?.writeData(data.data)
             result(true)
-        } else {
-            result(false)
+        } catch {
+            result(FlutterError(code: "WRITE_ERROR", message: "Failed to write: \(error.localizedDescription)", details: nil))
         }
     }
     
     private func read(result: @escaping FlutterResult) {
-        result(FlutterStandardTypedData(bytes: cachedData))
-        cachedData.removeAll() // Clear the cache after reading
+        do {
+            if let data = try serialPort?.readData() {
+                result(FlutterStandardTypedData(bytes: data))
+            } else {
+                result(FlutterError(code: "READ_ERROR", message: "Failed to read data", details: nil))
+            }
+        } catch {
+            result(FlutterError(code: "READ_ERROR", message: "Failed to read: \(error.localizedDescription)", details: nil))
+        }
     }
     
     private func requestPermission(result: @escaping FlutterResult) {
@@ -101,20 +110,5 @@ public class SerialComPlugin: NSObject, FlutterPlugin, ORSSerialPortDelegate {
                 result(granted)
             }
         }
-    }
-    
-    // MARK: - ORSSerialPortDelegate
-    
-    public func serialPort(_ serialPort: ORSSerialPort, didReceive data: Data) {
-        cachedData.append(data)
-        // Removed: methodChannel?.invokeMethod("onDataReceived", arguments: FlutterStandardTypedData(bytes: data))
-    }
-    
-    public func serialPortWasRemovedFromSystem(_ serialPort: ORSSerialPort) {
-        // Removed: methodChannel?.invokeMethod("onPortDisconnected", arguments: nil)
-    }
-    
-    public func serialPort(_ serialPort: ORSSerialPort, didEncounterError error: Error) {
-        // Removed: methodChannel?.invokeMethod("onError", arguments: error.localizedDescription)
     }
 }
