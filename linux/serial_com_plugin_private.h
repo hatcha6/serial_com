@@ -14,3 +14,5 @@ FlMethodResponse* handle_open_port(FlMethodCall* method_call);
 FlMethodResponse* handle_close_port(FlMethodCall* method_call);
 FlMethodResponse* handle_write_to_port(FlMethodCall* method_call);
 FlMethodResponse* handle_read_from_port(FlMethodCall* method_call);
+FlMethodResponse* handle_request_permission(FlMethodCall* method_call);
+

@@ -47,6 +47,8 @@ public class SerialComPlugin: NSObject, FlutterPlugin, CBCentralManagerDelegate,
             read(result: result)
         case "isConnected":
             result(isConnected)
+        case "requestPermission":
+            requestPermission(result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -113,5 +115,21 @@ public class SerialComPlugin: NSObject, FlutterPlugin, CBCentralManagerDelegate,
             pendingResult?(FlutterError(code: "NO_DATA", message: "No data received", details: nil))
         }
         pendingResult = nil
+    }
+
+    private func requestPermission(result: @escaping FlutterResult) {
+        switch CBCentralManager.authorization {
+        case .allowedAlways:
+            result(true)
+        case .notDetermined:
+            // iOS will automatically prompt for permission when we start scanning
+            centralManager.scanForPeripherals(withServices: nil, options: nil)
+            centralManager.stopScan()
+            result(true)
+        case .restricted, .denied:
+            result(false)
+        @unknown default:
+            result(FlutterError(code: "UNKNOWN_AUTH_STATUS", message: "Unknown authorization status", details: nil))
+        }
     }
 }

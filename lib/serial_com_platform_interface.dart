@@ -39,4 +39,6 @@ abstract class SerialComPlatform extends PlatformInterface {
   Future<List<Device>> listDevices();
 
   Future<Uint8List> read();
+
+  Future<bool> requestPermission();
 }

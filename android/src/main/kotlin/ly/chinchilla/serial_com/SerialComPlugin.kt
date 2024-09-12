@@ -8,6 +8,11 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import android.hardware.usb.UsbManager
 import android.content.Context
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
+import android.hardware.usb.UsbDevice
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import java.io.IOException
@@ -37,6 +42,7 @@ class SerialComPlugin: FlutterPlugin, MethodCallHandler {
       "disconnect" -> disconnect(result)
       "write" -> write(call, result)
       "read" -> read(result)
+      "requestPermission" -> requestPermission(result)
       else -> result.notImplemented()
     }
   }
@@ -108,6 +114,45 @@ class SerialComPlugin: FlutterPlugin, MethodCallHandler {
     } catch (e: IOException) {
       result.error("READ_FAILED", "Failed to read data from the device", e.message)
     }
+  }
+
+  private fun requestPermission(result: Result) {
+    val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+    val availableDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(manager)
+    
+    if (availableDrivers.isEmpty()) {
+      result.error("NO_USB_DEVICE", "No USB devices found", null)
+      return
+    }
+
+    val device = availableDrivers[0].device
+    val permissionIntent = PendingIntent.getBroadcast(context, 0, Intent(ACTION_USB_PERMISSION), 0)
+    
+    val filter = IntentFilter(ACTION_USB_PERMISSION)
+    val usbReceiver = object : BroadcastReceiver() {
+      override fun onReceive(context: Context, intent: Intent) {
+        if (ACTION_USB_PERMISSION == intent.action) {
+          synchronized(this) {
+            val grantedDevice: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+            if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+              if (grantedDevice != null) {
+                result.success(true)
+              }
+            } else {
+              result.error("PERMISSION_DENIED", "USB permission denied", null)
+            }
+            context.unregisterReceiver(this)
+          }
+        }
+      }
+    }
+
+    context.registerReceiver(usbReceiver, filter)
+    manager.requestPermission(device, permissionIntent)
+  }
+
+  companion object {
+    private const val ACTION_USB_PERMISSION = "ly.chinchilla.serial_com.USB_PERMISSION"
   }
 
   override fun onDetachedFromEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {

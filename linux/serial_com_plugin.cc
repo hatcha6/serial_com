@@ -37,6 +37,8 @@ static void serial_com_plugin_handle_method_call(
     response = handle_write_to_port(method_call);
   } else if (strcmp(method, "readFromPort") == 0) {
     response = handle_read_from_port(method_call);
+  } else if (strcmp(method, "requestPermission") == 0) {
+    response = handle_request_permission(method_call);
   } else {
     response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
   }
@@ -170,4 +172,21 @@ FlMethodResponse* handle_read_from_port(FlMethodCall* method_call) {
   g_autoptr(FlValue) result = fl_value_new_string(buffer);
   free(buffer);
   return FL_METHOD_RESPONSE(fl_method_success_response_new(result));
+}
+
+FlMethodResponse* handle_request_permission(FlMethodCall* method_call) {
+  // On Linux, we don't typically need to request permission for serial ports.
+  // Instead, we can check if the user has access to the serial port.
+  
+  FlValue* args = fl_method_call_get_args(method_call);
+  const char* port_name = fl_value_get_string(fl_value_lookup_string(args, "port"));
+
+  // Check if the port exists and is accessible
+  if (access(port_name, R_OK | W_OK) == 0) {
+    g_autoptr(FlValue) result = fl_value_new_bool(true);
+    return FL_METHOD_RESPONSE(fl_method_success_response_new(result));
+  } else {
+    g_autofree gchar *error_msg = g_strdup_printf("No permission to access port %s: %s", port_name, strerror(errno));
+    return FL_METHOD_RESPONSE(fl_method_error_response_new("PERMISSION_ERROR", error_msg, nullptr));
+  }
 }

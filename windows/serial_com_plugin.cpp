@@ -6,6 +6,7 @@
 #include <memory>
 #include <sstream>
 #include <vector>
+#include <winreg.h>
 
 namespace serial_com {
 
@@ -79,6 +80,45 @@ class SerialPort {
     return {};
   }
 
+  bool requestPermission() {
+    // Windows doesn't require explicit permission for serial ports
+    return true;
+  }
+
+  std::vector<std::string> listAvailableDevices() {
+    std::vector<std::string> devices;
+    HKEY hKey;
+    LONG result = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "HARDWARE\\DEVICEMAP\\SERIALCOMM", 0, KEY_READ, &hKey);
+    
+    if (result != ERROR_SUCCESS) {
+      return devices;
+    }
+
+    char valueName[MAX_PATH];
+    char data[MAX_PATH];
+    DWORD valueNameSize, dataSize, valueType;
+    DWORD index = 0;
+
+    while (true) {
+      valueNameSize = MAX_PATH;
+      dataSize = MAX_PATH;
+      result = RegEnumValueA(hKey, index, valueName, &valueNameSize, NULL, &valueType, (LPBYTE)data, &dataSize);
+      
+      if (result == ERROR_NO_MORE_ITEMS) {
+        break;
+      }
+      
+      if (result == ERROR_SUCCESS && valueType == REG_SZ) {
+        devices.push_back(data);
+      }
+      
+      index++;
+    }
+
+    RegCloseKey(hKey);
+    return devices;
+  }
+
  private:
   HANDLE handle_;
 };
@@ -146,11 +186,14 @@ class SerialComPlugin : public flutter::Plugin {
       auto data = serial_port_.Read();
       result->Success(flutter::EncodableValue(data));
     } else if (method_call.method_name().compare("listDevices") == 0) {
-      // Implement device listing logic here
-      // This is a placeholder implementation
-      flutter::EncodableList devices;
-      // Add logic to populate the devices list
-      result->Success(flutter::EncodableValue(devices));
+      auto devices = serial_port_.listAvailableDevices();
+      flutter::EncodableList deviceList;
+      for (const auto& device : devices) {
+        deviceList.push_back(flutter::EncodableValue(device));
+      }
+      result->Success(flutter::EncodableValue(deviceList));
+    } else if (method_call.method_name().compare("requestPermission") == 0) {
+      result->Success(flutter::EncodableValue(serial_port_.requestPermission()));
     } else {
       result->NotImplemented();
     }

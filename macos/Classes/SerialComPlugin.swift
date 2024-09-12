@@ -1,6 +1,7 @@
 import Cocoa
 import FlutterMacOS
 import ORSSerial
+import IOBluetooth
 
 public class SerialComPlugin: NSObject, FlutterPlugin, ORSSerialPortDelegate {
     private var serialPort: ORSSerialPort?
@@ -29,6 +30,8 @@ public class SerialComPlugin: NSObject, FlutterPlugin, ORSSerialPortDelegate {
             write(call: call, result: result)
         case "read":
             read(result: result)
+        case "requestPermission":
+            requestPermission(result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -89,6 +92,15 @@ public class SerialComPlugin: NSObject, FlutterPlugin, ORSSerialPortDelegate {
         // This method will be called when data is available
         // For now, we'll return an empty array
         result(FlutterStandardTypedData(bytes: Data()))
+    }
+    
+    private func requestPermission(result: @escaping FlutterResult) {
+        let ioDialogService = IOBluetoothDialogService()
+        ioDialogService.requestAccess { (granted: Bool) in
+            DispatchQueue.main.async {
+                result(granted)
+            }
+        }
     }
     
     // MARK: - ORSSerialPortDelegate

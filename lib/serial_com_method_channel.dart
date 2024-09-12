@@ -54,4 +54,11 @@ class MethodChannelSerialCom extends SerialComPlatform {
     final written = await methodChannel.invokeMethod<bool>('write', data);
     return written ?? false;
   }
+
+  @override
+  Future<bool> requestPermission() async {
+    final permission =
+        await methodChannel.invokeMethod<bool>('requestPermission');
+    return permission ?? false;
+  }
 }

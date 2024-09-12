@@ -74,6 +74,9 @@ class MockSerialComPlatform
     _buffer.addAll(data);
     return true;
   }
+
+  @override
+  Future<bool> requestPermission() => Future.value(true);
 }
 
 void main() {
